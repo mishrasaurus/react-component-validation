@@ -1,121 +1,117 @@
 /**
  * adds additional functionality of acting as the validator of the child components
  *
- * fields :
+ * props :
  *
- * validate     - should be true to start the validation
+ * transferValidationProperties - function to transfer all child components validationProperties (defined at the end of comments)
+ *                              in parent state or store from asValidator context
  *
- * onValidation - function that will take the validationMap ( errorText, dataKey, inProgress ) and update it in the component context
+ * completeValidation - callback function to be called after the components are validated
  *
- * errorFields  - map of dataKey -> errorText for the components errors that have error
+ * definition
+ * validationProperties - object or array of objects with following attributes
+ * - componentKey : [required] key to uniquely identify the component
+ * - inProgress   : [optional] boolean flag to indicate whether component's validation is in progress
+ * - [ Any other fields you want to use in validation ]
  *
- * validationInProgress  - map of dataKey -> bool for all the components whose validation are in progress
+ * Sample Examples of validationProperties :
+ * - Array of objects : [
+ *                        { componentKey: 'TodoList' , errorText : 'List cannot be empty' },
+ *                        { componentKey: 'Filter', errorText 'Filter is not valid', filters: [ 'Deleted', 'Saved' ] }
+ *                      ]
  *
- * updateValidationProperties - function to update the errorFields,validationInProgress in parent state from component context
- *
- * validationRunner - generator to run all the tasks required after the components are validated
+ * - Simple object : { componentKey: 'CreditCardInput' , inProgress : true,
+ *                     progressMessage: 'Please wait... We are verifying the credit card information' }
  *
  */
 
- import React, { Component, PropTypes } from 'react';
+import React, { Component, PropTypes } from 'react';
 
- import _isArray from 'lodash.isarray';
- import _isEmpty from 'lodash.isempty';
- import _isEqual from 'lodash.isequal';
+import _castArray from 'lodash.castarray';
+import _isEmpty from 'lodash.isempty';
 
- const asValidator = ( ComposedComponent ) => class AsValidator extends Component {
+const asValidator = (ComposedComponent) => class AsValidator extends Component {
 
-  static propTypes = {
-    validate                  : PropTypes.bool,
-    errorFields               : PropTypes.object,
-    validationInProgress      : PropTypes.object,
-    validationRunner          : PropTypes.object.isRequired, // a generator function
-    updateValidationProperties: PropTypes.func.isRequired
+  getChildContext() {
+    return {
+      onValidation: this.onValidation
+    };
+  }
+
+  static childContextTypes = {
+    onValidation: PropTypes.func
   };
 
-  constructor( props, context ) {
-    super( props, context );
-    this.errorFields = {};
-    this.validationInProgress = {};
+  static propTypes = {
+    completeValidation: PropTypes.func.isRequired,
+    transferValidationProperties: PropTypes.func.isRequired
+  };
+
+  constructor(props, context) {
+    super(props, context);
+    this.validationProperties = {};
+    this.inProgressValidations = {};
   }
 
   resetValidationProperties = () => {
-    this.errorFields = {};
-    this.validationInProgress = {};
-
-    this.props.updateValidationProperties( {}, {} );
+    this.validationProperties = {};
+    this.inProgressValidations = {};
+    this.props.transferValidationProperties({});
   };
 
-  onValidation = ( validationMap, updateValidationProperties ) => {
-    if ( !validationMap ) {
+  /**
+   *
+   * @param componentValidationProperties - validationProperties from child component that will be updated in asValidator context
+   * @param shouldTransferValidationProperties -  pass it as true to transfer the parent/store state with component validationProperties
+   */
+  onValidation = (componentValidationProperties, shouldTransferValidationProperties) => {
+    if (!componentValidationProperties) {
       return;
     }
 
-    const { errorFields = {}, validationInProgress = {} } = this;
+    const { validationProperties = {}, inProgressValidations = {} } = this;
 
-    // make it an array
-    _isArray( validationMap ) || ( validationMap = [ validationMap ] );
+    // makes  componentValidationProperties an array if not
+    _castArray(componentValidationProperties).forEach(vProp => {
+      const componentKey = vProp.componentKey;
 
-    validationMap.forEach( vMap => {
-      const { errorText, dataKey} = vMap;
-
-      if ( errorText ) {
-        errorFields[ dataKey ] = errorText;
+      if (vProp.inProgress) {
+        inProgressValidations[componentKey] = true;
       } else {
-        delete errorFields[ dataKey ];
+        delete inProgressValidations[componentKey];
       }
 
-      if ( vMap.inProgress ) {
-        validationInProgress[ dataKey ] = true;
-      } else {
-        delete validationInProgress[ dataKey ];
-      }
-    } );
+      // update the component's validationProperties in asValidator context
+      validationProperties[componentKey] = vProp;
 
-    updateValidationProperties ? this.props.updateValidationProperties( { errorFields, validationInProgress } )
-    : (this.needValidationPropertiesUpdate = true );
+    });
+
+    if (shouldTransferValidationProperties) {
+      this.props.transferValidationProperties({...validationProperties})
+    } else {
+      this.needValidationPropertiesTransfer = true;
+    }
   };
 
   componentDidUpdate() {
-    const that = this,
-    { props,  errorFields, validationInProgress } = that;
 
-    if ( _isEmpty( validationInProgress ) ) { // all async/sync validations are over
-      if ( that.needValidationPropertiesUpdate || _isEmpty( errorFields ) ) {
-        that.completeValidation();
+    if (this.needValidationPropertiesTransfer) {
+      this.needValidationPropertiesTransfer = false;
+
+      if (_isEmpty(this.inProgressValidations)) { // all async/sync validations are over
+        this.props.completeValidation({...this.validationProperties});
+      } else {
+        this.props.transferValidationProperties({...this.validationProperties});
       }
-    } else {
-      props.updateValidationProperties( { errorFields, validationInProgress } );
     }
-
   }
-
-  completeValidation = () => {
-    const
-    that = this,
-    { errorFields, validationInProgress } = that,
-    { validate, validationRunner } = that.props;
-
-    that.needValidationPropertiesUpdate = false;
-
-    if ( validate ) {
-      let isDone;
-      do {
-        isDone = validationRunner.next( { errorFields, validationInProgress } ).done;
-      } while ( !isDone );
-    }
-  };
 
   render() {
     return (
-      <ComposedComponent
-      {...this.props}
-      {...this.state}
-      onValidation={this.onValidation}
-      resetValidationProperties={this.resetValidationProperties} />
-      );
+      <ComposedComponent {...this.props} resetValidationProperties={this.resetValidationProperties}/>
+    );
   }
 };
 
-export const asValidatorDecorator = () => asValidator;
+export const asValidatorDecorator = () => asValidator; // for es2015 class decorators "@asValidatorDecorator"
 export default asValidator;

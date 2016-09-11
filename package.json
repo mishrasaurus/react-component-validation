@@ -2,14 +2,13 @@
   "name": "react-component-validation",
   "version": "0.2.0",
   "description": "",
-  "main": "./libs/index.js",
+  "main": "./lib/index.js",
   "dependencies": {
-    "react": "^0.14.0",
+    "invariant": "^2.0.0",
     "lodash.isempty": "^4.4.0",
-    "lodash.isequal": "^4.0.0",
-    "lodash.isarray": "^4.0.0"
+    "lodash.castarray": "^4.4.0"
   },
-   "devDependencies": {
+  "devDependencies": {
     "babel-cli": "^6.9.0",
     "babel-core": "^6.9.0",
     "babel-loader": "^6.2.4",
