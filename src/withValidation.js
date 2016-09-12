@@ -1,22 +1,22 @@
 /**
  * adds additional functionality of starting or resetting the validation of composed components
- * also passes the validationProperties (defined at the end of comments) to onValidation function
+ * also passes the validationProperties (defined at the end of comments) to updateValidation function
  *
  * props :
- * shouldValidate - boolean prop that should be true to start the validation and false to stop the validation
- * shouldResetValidations - boolean prop to be passed as true to reset the validation of the component
+ * shouldValidate         - boolean prop that should be true to start the validation and false to stop the validation
+ * shouldResetValidations - boolean prop to reset the validation of the component when specified as true
  *
  *  make sure to toggle these boolean props from true to false
  *  else it could lead to infinite component update loop
  *
  * props/context:
- * onValidation - onValidation is used to pass the validationProperties to its parent/store.
- *                it can be passed via props or context (preference is given to props)
+ * updateValidation - updateValidation is used to pass the child component's validationProperties to its parent.
+ *                    this function can be passed via props or context (preference is given to props)
  *
  * props/component ref
- * validation   - function that will validate the component and return its validationProperties.
- *                user can have the validation function in component itself instead of having it as its props,
- *                validation will be called from component ref ( For validations that depend on component internal state)
+ * validate     - function that will validate the component and return its validationProperties.
+ *                user can have the validate function in component itself instead of having it as its props,
+ *                then validate will be called from component ref ( For validations that depend on component internal state)
  *
  * definition
  * validationProperties - object or array of objects with following attributes
@@ -29,7 +29,7 @@
  *                        { componentKey: 'TodoList' , errorText : 'List cannot be empty' },
  *                        { componentKey: 'Filter', errorText 'Filter is not valid', filters: [ 'Deleted', 'Saved' ] }
  *                      ]
- *
+ *  'errorText' ,'filters'
  * - Simple object : { componentKey: 'CreditCardInput' , inProgress : true,
  *                     progressMessage: 'Please wait... We are verifying the credit card information' }
  *
@@ -43,15 +43,15 @@ import invariant from 'invariant'
 const withValidation = (ComposedComponent) => class WithValidation extends Component {
 
   static contextTypes = {
-    onValidation: PropTypes.func // required field. can be passed via props too
+    updateValidation: PropTypes.func // required field. can be passed via props too
   };
 
   static propTypes = {
-    validation: PropTypes.func,
+    validate: PropTypes.func, // required field. can be present as component's internal function too. 
     shouldValidate: PropTypes.bool,
     shouldResetValidation: PropTypes.bool,
 
-    onValidation: PropTypes.func // required field. can be passed via context too
+    updateValidation: PropTypes.func // required field. can be passed via context too
   };
 
   constructor(props, context) {
@@ -60,8 +60,8 @@ const withValidation = (ComposedComponent) => class WithValidation extends Compo
     this.canAttachRef = ComposedComponent.prototype instanceof Component;
     this.componentName = ComposedComponent.displayName || ComposedComponent.name || 'Component';
 
-    invariant(props.onValidation || context.onValidation,
-      `Could not find required "onValidation" function in either the context or props of ` +
+    invariant(props.updateValidation || context.updateValidation,
+      `Could not find required "updateValidation" function in either the context or props of ` +
       `"${this.componentName}" for withValidation HOC.`
     );
   }
@@ -69,18 +69,18 @@ const withValidation = (ComposedComponent) => class WithValidation extends Compo
   getComponentValidationProperties = () => {
     const
       props = this.props,
-      validation = props.validation || ( this.refs.composedComponent && this.refs.composedComponent.validation );
-    // use validation function from composedComponent if not provided in props
+      validate = props.validate || ( this.refs.composedComponent && this.refs.composedComponent.validate );
+    // use validate function from composedComponent if not provided in props
 
     let validationProperties;
 
-    validation && ( validationProperties = validation(props) );
+    validate && ( validationProperties = validate(props) );
 
     // save all the componentKeys for shouldResetValidation
     validationProperties && ( this.componentKeys = _castArray(validationProperties).map(vP => vP.componentKey) );
 
-    invariant(validation,
-      `Could not find necessary "validation" function in either the props or ref of ` +
+    invariant(validate,
+      `Could not find necessary "validate" function in either the props or ref of ` +
       `"${this.componentName}" for withValidation HOC.`
     );
 
@@ -90,22 +90,22 @@ const withValidation = (ComposedComponent) => class WithValidation extends Compo
   componentDidUpdate(prevProps, prevState) {
     const
       props = this.props,
-      onValidation = this.props.onValidation || this.context.onValidation;
+      updateValidation = this.props.updateValidation || this.context.updateValidation;
 
     if (props.shouldValidate) {
-      onValidation && onValidation(this.getComponentValidationProperties());
+      updateValidation && updateValidation(this.getComponentValidationProperties());
 
     } else if (props.shouldResetValidation) {
-      !_isEmpty(this.componentKeys) && onValidation && onValidation(this.componentKeys.map(componentKey => ({componentKey})));
+      !_isEmpty(this.componentKeys) && updateValidation && updateValidation(this.componentKeys.map(componentKey => ({componentKey})));
     }
   }
 
   render() {
-    const onValidation = this.props.onValidation || this.context.onValidation;
+    const updateValidation = this.props.updateValidation || this.context.updateValidation;
     if (this.canAttachRef) {
-      return <ComposedComponent ref="composedComponent" {...this.props} onValidation={onValidation}/>
+      return <ComposedComponent ref="composedComponent" {...this.props} updateValidation={updateValidation}/>
     }
-    return <ComposedComponent {...this.props} onValidation={onValidation}/>
+    return <ComposedComponent {...this.props} updateValidation={updateValidation}/>
   }
 };
 

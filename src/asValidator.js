@@ -3,8 +3,8 @@
  *
  * props :
  *
- * transferValidationProperties - function to transfer all child components validationProperties (defined at the end of comments)
- *                              in parent state or store from asValidator context
+ * onValidationChange - function to call with all children component's validationProperties (defined at the end of comments)
+ *                      from asValidator context. This function can update parent state or library like redux, reflux store.
  *
  * completeValidation - callback function to be called after the components are validated
  *
@@ -34,17 +34,17 @@ const asValidator = (ComposedComponent) => class AsValidator extends Component {
 
   getChildContext() {
     return {
-      onValidation: this.onValidation
+      updateValidation: this.updateValidation
     };
   }
 
   static childContextTypes = {
-    onValidation: PropTypes.func
+    updateValidation: PropTypes.func
   };
 
   static propTypes = {
     completeValidation: PropTypes.func.isRequired,
-    transferValidationProperties: PropTypes.func.isRequired
+    onValidationChange: PropTypes.func.isRequired
   };
 
   constructor(props, context) {
@@ -56,15 +56,15 @@ const asValidator = (ComposedComponent) => class AsValidator extends Component {
   resetValidationProperties = () => {
     this.validationProperties = {};
     this.inProgressValidations = {};
-    this.props.transferValidationProperties({});
+    this.props.onValidationChange({});
   };
 
   /**
    *
    * @param componentValidationProperties - validationProperties from child component that will be updated in asValidator context
-   * @param shouldTransferValidationProperties -  pass it as true to transfer the parent/store state with component validationProperties
+   * @param triggerValidationChange -  pass it as true to call onValidationChange after update
    */
-  onValidation = (componentValidationProperties, shouldTransferValidationProperties) => {
+  updateValidation = (componentValidationProperties, triggerValidationChange) => {
     if (!componentValidationProperties) {
       return;
     }
@@ -86,22 +86,23 @@ const asValidator = (ComposedComponent) => class AsValidator extends Component {
 
     });
 
-    if (shouldTransferValidationProperties) {
-      this.props.transferValidationProperties({...validationProperties})
+    if (triggerValidationChange) {
+      this.needValidationChange = false;
+      this.props.onValidationChange({...validationProperties});
     } else {
-      this.needValidationPropertiesTransfer = true;
+      this.needValidationChange = true;
     }
   };
 
   componentDidUpdate() {
 
-    if (this.needValidationPropertiesTransfer) {
-      this.needValidationPropertiesTransfer = false;
+    if (this.needValidationChange) {
+      this.needValidationChange = false;
 
       if (_isEmpty(this.inProgressValidations)) { // all async/sync validations are over
         this.props.completeValidation({...this.validationProperties});
       } else {
-        this.props.transferValidationProperties({...this.validationProperties});
+        this.props.onValidationChange({...this.validationProperties});
       }
     }
   }
